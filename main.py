@@ -8,6 +8,7 @@ import os
 import uuid
 import asyncio
 from pathlib import Path
+from typing import Dict
 
 app = FastAPI()
 
@@ -27,8 +28,18 @@ app.add_middleware(
 DOWNLOADS_DIR = Path("downloads")
 DOWNLOADS_DIR.mkdir(exist_ok=True)
 
+# Store download progress and cancellation flags
+download_progress: Dict[str, dict] = {}
+cancel_flags: Dict[str, bool] = {}
+
 
 class DownloadRequest(BaseModel):
+    url: str
+    download_type: str  # 'audio' or 'video'
+    format: str  # 'mp3', 'mp4', 'm4a', etc.
+
+
+class StartDownloadRequest(BaseModel):
     url: str
     download_type: str  # 'audio' or 'video'
     format: str  # 'mp3', 'mp4', 'm4a', etc.
@@ -40,24 +51,122 @@ async def root():
     return FileResponse("static/index.html")
 
 
-@app.post("/download")
-async def download_video(request: DownloadRequest):
-    """
-    Download YouTube content and return the file.
-    Automatically deletes the file after sending.
-    """
+@app.post("/start-download")
+async def start_download(request: StartDownloadRequest):
+    """Start a download and return a download ID for tracking progress"""
     if not request.url or not request.url.strip():
         raise HTTPException(status_code=400, detail="URL cannot be empty")
     
-    # Generate unique filename to avoid conflicts
-    unique_id = str(uuid.uuid4())[:8]
+    download_id = str(uuid.uuid4())[:12]
     
-    # Configure yt-dlp options based on user choice
-    ydl_opts = {}
+    # Initialize progress tracking
+    download_progress[download_id] = {
+        "status": "starting",
+        "progress": 0,
+        "speed": "",
+        "eta": "",
+        "filename": "",
+        "error": None
+    }
+    cancel_flags[download_id] = False
+    
+    # Start download in background
+    asyncio.create_task(process_download(download_id, request))
+    
+    return {"download_id": download_id}
+
+
+@app.get("/progress/{download_id}")
+async def get_progress(download_id: str):
+    """Get the current progress of a download"""
+    if download_id not in download_progress:
+        raise HTTPException(status_code=404, detail="Download ID not found")
+    
+    return download_progress[download_id]
+
+
+@app.post("/cancel/{download_id}")
+async def cancel_download(download_id: str):
+    """Cancel an ongoing download"""
+    if download_id not in cancel_flags:
+        raise HTTPException(status_code=404, detail="Download ID not found")
+    
+    cancel_flags[download_id] = True
+    download_progress[download_id]["status"] = "cancelled"
+    
+    return {"message": "Download cancelled"}
+
+
+@app.get("/download/{download_id}")
+async def download_file(download_id: str):
+    """Download the completed file"""
+    if download_id not in download_progress:
+        raise HTTPException(status_code=404, detail="Download ID not found")
+    
+    progress = download_progress[download_id]
+    
+    if progress["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Download not completed yet")
+    
+    file_path = progress.get("file_path")
+    if not file_path or not Path(file_path).exists():
+        raise HTTPException(status_code=404, detail="Downloaded file not found")
+    
+    response = FileResponse(
+        path=file_path,
+        filename=progress["filename"],
+        media_type='application/octet-stream'
+    )
+    
+    # Schedule cleanup
+    asyncio.create_task(cleanup_download(download_id, Path(file_path)))
+    
+    return response
+
+
+async def process_download(download_id: str, request: StartDownloadRequest):
+    """Process the download in the background with progress tracking"""
+    unique_id = str(uuid.uuid4())[:8]
+    downloaded_file = None
+    
+    def progress_hook(d):
+        """Hook to track download progress"""
+        if cancel_flags.get(download_id, False):
+            raise Exception("Download cancelled by user")
+        
+        if d['status'] == 'downloading':
+            progress_data = download_progress[download_id]
+            progress_data["status"] = "downloading"
+            
+            # Calculate percentage
+            if d.get('total_bytes'):
+                percent = (d.get('downloaded_bytes', 0) / d['total_bytes']) * 100
+                progress_data["progress"] = round(percent, 1)
+            elif d.get('total_bytes_estimate'):
+                percent = (d.get('downloaded_bytes', 0) / d['total_bytes_estimate']) * 100
+                progress_data["progress"] = round(percent, 1)
+            
+            # Speed and ETA
+            if d.get('speed'):
+                speed_mb = d['speed'] / 1024 / 1024
+                progress_data["speed"] = f"{speed_mb:.2f} MB/s"
+            
+            if d.get('eta'):
+                progress_data["eta"] = f"{d['eta']}s"
+        
+        elif d['status'] == 'finished':
+            download_progress[download_id]["status"] = "processing"
+            download_progress[download_id]["progress"] = 100
+    
+    # Configure yt-dlp options
+    ydl_opts = {
+        'progress_hooks': [progress_hook],
+        'quiet': False,
+        'no_warnings': True,
+    }
     
     if request.download_type == "audio":
-        # Audio download configuration
-        ydl_opts = {
+        ydl_opts.update({
             'format': 'bestaudio/best',
             'outtmpl': str(DOWNLOADS_DIR / f'{unique_id}_%(title)s.%(ext)s'),
             'postprocessors': [{
@@ -65,86 +174,82 @@ async def download_video(request: DownloadRequest):
                 'preferredcodec': request.format,
                 'preferredquality': '192',
             }],
-            'quiet': True,
-            'no_warnings': True,
-        }
+        })
     elif request.download_type == "video":
-        # Video download configuration
-        ydl_opts = {
+        ydl_opts.update({
             'format': 'bestvideo+bestaudio/best',
             'outtmpl': str(DOWNLOADS_DIR / f'{unique_id}_%(title)s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-        }
-        
-        # If specific video format requested, add merge format
+        })
         if request.format in ['mp4', 'mkv', 'webm']:
             ydl_opts['merge_output_format'] = request.format
-    else:
-        raise HTTPException(status_code=400, detail="Invalid download type. Use 'audio' or 'video'")
-    
-    downloaded_file = None
     
     try:
         # Download the content
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(request.url, download=True)
             
-            # Find the downloaded file
-            # yt-dlp might change the extension after post-processing
-            base_filename = f'{unique_id}_{info["title"]}'
+            if cancel_flags.get(download_id, False):
+                raise Exception("Download cancelled by user")
             
-            # Look for the file with various possible extensions
+            # Find the downloaded file
+            base_filename = f'{unique_id}_{info["title"]}'
             possible_extensions = [request.format, 'mp4', 'mkv', 'webm', 'mp3', 'm4a', 'opus']
+            
             for ext in possible_extensions:
                 potential_file = DOWNLOADS_DIR / f'{base_filename}.{ext}'
                 if potential_file.exists():
                     downloaded_file = potential_file
                     break
             
-            # If still not found, search directory for files with unique_id
             if not downloaded_file:
                 for file in DOWNLOADS_DIR.glob(f'{unique_id}_*'):
                     downloaded_file = file
                     break
         
         if not downloaded_file or not downloaded_file.exists():
-            raise HTTPException(status_code=500, detail="Download completed but file not found")
+            raise Exception("Download completed but file not found")
         
-        # Return file and schedule deletion after response
-        response = FileResponse(
-            path=str(downloaded_file),
-            filename=downloaded_file.name.replace(f'{unique_id}_', ''),
-            media_type='application/octet-stream'
-        )
+        # Update progress to completed
+        download_progress[download_id].update({
+            "status": "completed",
+            "progress": 100,
+            "filename": downloaded_file.name.replace(f'{unique_id}_', ''),
+            "file_path": str(downloaded_file)
+        })
         
-        # Schedule file deletion after response is sent
-        asyncio.create_task(delete_file_after_delay(downloaded_file))
-        
-        return response
-        
-    except yt_dlp.utils.DownloadError as e:
-        # Clean up any partial downloads
-        if downloaded_file and downloaded_file.exists():
-            downloaded_file.unlink()
-        raise HTTPException(status_code=400, detail=f"Download error: {str(e)}")
-    
     except Exception as e:
-        # Clean up any partial downloads
+        # Handle errors
+        download_progress[download_id].update({
+            "status": "error",
+            "error": str(e)
+        })
+        
+        # Clean up partial downloads
         if downloaded_file and downloaded_file.exists():
             downloaded_file.unlink()
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        
+        # Clean up any files with the unique_id
+        for file in DOWNLOADS_DIR.glob(f'{unique_id}_*'):
+            try:
+                file.unlink()
+            except:
+                pass
 
 
-async def delete_file_after_delay(file_path: Path, delay: int = 5):
-    """Delete file after a delay to ensure response is sent"""
+async def cleanup_download(download_id: str, file_path: Path, delay: int = 10):
+    """Clean up download data and file after a delay"""
     await asyncio.sleep(delay)
+    
     try:
         if file_path.exists():
             file_path.unlink()
             print(f"Deleted: {file_path.name}")
     except Exception as e:
         print(f"Error deleting file {file_path}: {e}")
+    
+    # Remove from tracking dictionaries
+    download_progress.pop(download_id, None)
+    cancel_flags.pop(download_id, None)
 
 
 @app.on_event("startup")

@@ -43,7 +43,7 @@ YouTubeDownloader/
 
 1. **Clone or navigate to the project directory**:
    ```bash
-   cd d:\\Projects\\YouTubeDownloader
+   cd d:\Projects\YouTubeDownloader
    ```
 
 2. **Create a virtual environment** (recommended):
