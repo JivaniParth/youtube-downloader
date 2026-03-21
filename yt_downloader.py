@@ -44,7 +44,7 @@ def download_youtube_content():
     while True:
         print("\n--- YouTube Downloader ---")
         url = input("Enter the YouTube URL: ").strip()
-        
+
         if not url:
             print("Error: URL cannot be empty.")
             continue
