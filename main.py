@@ -100,10 +100,14 @@ def download_youtube_content() -> None:
         except Exception as exc:
             print(f"Download failed: {exc}")
 
-        again = input("Download another file? (y/n): ").strip().lower()
-        if again != "y":
-            print("Exiting.")
-            break
+        while True:
+            again = input("Download another file? (yes/no): ").strip().lower()
+            if again in {"yes", "y"}:
+                break
+            if again in {"no", "n"}:
+                print("Exiting.")
+                return
+            print("Please enter yes or no.")
 
 
 if __name__ == "__main__":

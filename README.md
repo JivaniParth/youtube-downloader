@@ -11,7 +11,7 @@ Private, personal-use command-line app for downloading YouTube video or audio.
   - Output format
   - Download location
 - Output folder is created automatically if it does not exist
-- Repeat download loop (`y/n`) so you can keep downloading in one session
+- After each download, asks whether to continue with another download (`yes/no`)
 
 ## Supported Formats
 
@@ -37,8 +37,7 @@ Private, personal-use command-line app for downloading YouTube video or audio.
 
 ```
 YouTubeDownloader/
-├── main.py               # Main CLI entrypoint
-├── yt_downloader.py      # Alternate CLI entrypoint
+├── main.py               # Main and only CLI entrypoint
 ├── requirements.txt      # Python dependencies
 └── README.md
 ```
@@ -64,16 +63,10 @@ YouTubeDownloader/
 
 ## Usage
 
-Run either script:
+Run the CLI:
 
 ```powershell
 python main.py
-```
-
-or
-
-```powershell
-python yt_downloader.py
 ```
 
 Prompt order:
@@ -82,6 +75,7 @@ Prompt order:
 2. Choose download type (Video/Audio)
 3. Choose format (based on type)
 4. Enter download location (folder path)
+5. Choose whether to continue with another download (yes/no)
 
 ## Troubleshooting
 
