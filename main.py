@@ -1,6 +1,7 @@
 import yt_dlp
 import os
 from pathlib import Path
+
 VIDEO_FORMATS = ("mp4", "mkv", "webm")
 AUDIO_FORMATS = ("mp3", "m4a", "opus")
 
@@ -15,28 +16,28 @@ def prompt_non_empty(prompt: str) -> str:
 
 def prompt_download_type() -> str:
     while True:
-        choice = input("Download type - Video (v) or Audio (a): ").strip().lower()
-        if choice in {"v", "video"}:
+        choice = input("\nDownload type - Video (v) or Audio (a): ").strip().lower()
+        if choice in {"v", "video", "Video"}:
             return "video"
-        if choice in {"a", "audio"}:
+        if choice in {"a", "audio", "Audio"}:
             return "audio"
-        print("Invalid selection. Enter v/video or a/audio.")
+        print("\nInvalid selection. Enter v/video/Video or a/audio/Audio.")
 
 
 def prompt_format(download_type: str) -> str:
     formats = VIDEO_FORMATS if download_type == "video" else AUDIO_FORMATS
     while True:
-        selected = input(f"Choose format ({'/'.join(formats)}): ").strip().lower()
+        selected = input(f"\nChoose format ({'/'.join(formats)}): ").strip().lower()
         if selected in formats:
             return selected
-        print(f"Invalid format. Choose one of: {', '.join(formats)}")
+        print(f"\nInvalid format. Choose one of: {', '.join(formats)}")
 
 
 def prompt_output_directory() -> Path:
     while True:
-        raw_path = input("Download location (folder path): ").strip().strip('"')
+        raw_path = input("\nDownload location (folder path): ").strip().strip('"')
         if not raw_path:
-            print("Location cannot be empty.")
+            print("\nLocation cannot be empty.")
             continue
 
         output_path = Path(os.path.expanduser(raw_path)).resolve()
@@ -44,7 +45,7 @@ def prompt_output_directory() -> Path:
             output_path.mkdir(parents=True, exist_ok=True)
             return output_path
         except OSError as exc:
-            print(f"Cannot use this location: {exc}")
+            print(f"\nCannot use this location: {exc}")
 
 
 def build_ydl_options(download_type: str, selected_format: str, output_dir: Path) -> dict:
@@ -86,28 +87,29 @@ def download_youtube_content() -> None:
     print("\nYouTube Downloader CLI")
 
     while True:
-        url = prompt_non_empty("Enter YouTube URL: ")
+        url = prompt_non_empty("\nEnter YouTube URL: ")
         download_type = prompt_download_type()
         selected_format = prompt_format(download_type)
         output_dir = prompt_output_directory()
 
         ydl_opts = build_ydl_options(download_type, selected_format, output_dir)
+        print()
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-            print(f"Download completed. Saved in: {output_dir}")
+            print(f"\nDownload completed. Saved in: {output_dir}")
         except Exception as exc:
-            print(f"Download failed: {exc}")
+            print(f"\nDownload failed: {exc}")
 
         while True:
-            again = input("Download another file? (yes/no): ").strip().lower()
+            again = input("\nDownload another file? (yes/no): ").strip().lower()
             if again in {"yes", "y"}:
                 break
             if again in {"no", "n"}:
-                print("Exiting.")
+                print("\nExiting.")
                 return
-            print("Please enter yes or no.")
+            print("\nPlease enter yes or no.")
 
 
 if __name__ == "__main__":
