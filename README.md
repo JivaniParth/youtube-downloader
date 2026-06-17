@@ -38,6 +38,7 @@ Private, personal-use command-line app for downloading YouTube video or audio.
 ```
 YouTubeDownloader/
 ├── main.py               # Main and only CLI entrypoint
+├── ytdownload.bat         # Launcher so the app can be run as `ytdownload` from anywhere
 ├── requirements.txt      # Python dependencies
 └── README.md
 ```
@@ -61,17 +62,42 @@ YouTubeDownloader/
    pip install -r requirements.txt
    ```
 
+## Run from anywhere as `ytdownload`
+
+After the venv is set up (see Installation above), you can call this tool as `ytdownload` from any folder, in any terminal, without typing `python main.py` or its full path.
+
+1. `ytdownload.bat` (included in this folder) already points at `venv\Scripts\python.exe` and `main.py` using its own location, so it works as-is as long as it stays in this project folder alongside `main.py` and `venv\`.
+2. Add this project folder to your **user PATH** once, so Windows can find `ytdownload.bat` from anywhere:
+   - PowerShell (run once, then close and reopen your terminal):
+     ```powershell
+     [Environment]::SetEnvironmentVariable("Path", $env:Path + ";D:\Projects\YouTubeDownloader", "User")
+     ```
+   - Or via the GUI: Search "Environment Variables" → Edit the user `Path` variable → New → paste the project folder path (e.g. `D:\Projects\YouTubeDownloader`) → OK.
+3. Open a **new** terminal window (PATH changes only apply to new sessions) and run:
+   ```powershell
+   ytdownload https://youtu.be/GnjPoRXYxaM
+   ```
+   You'll then be prompted for download type, format, and location, same as before. You can also just run `ytdownload` with no URL and you'll be prompted for everything, including the URL.
+
 ## Usage
 
-Run the CLI:
+Run the CLI directly with Python:
 
 ```powershell
 python main.py
 ```
 
+Or, once set up as described above, from any folder:
+
+```powershell
+ytdownload [url]
+```
+
+The URL is optional — pass it as an argument to skip that prompt, or omit it and you'll be asked for it.
+
 Prompt order:
 
-1. Enter YouTube URL
+1. (URL — skipped if passed as an argument)
 2. Choose download type (Video/Audio)
 3. Choose format (based on type)
 4. Enter download location (folder path)

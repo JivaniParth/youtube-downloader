@@ -1,3 +1,4 @@
+import argparse
 import yt_dlp
 import os
 from pathlib import Path
@@ -83,11 +84,31 @@ def build_ydl_options(download_type: str, selected_format: str, output_dir: Path
     return options
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="ytdownload",
+        description="YouTube Downloader CLI",
+    )
+    parser.add_argument(
+        "url",
+        nargs="?",
+        default=None,
+        help="YouTube URL to download. If omitted, you'll be prompted for it.",
+    )
+    return parser.parse_args()
+
+
 def download_youtube_content() -> None:
     print("\nYouTube Downloader CLI")
+    args = parse_args()
+    pending_url = args.url
 
     while True:
-        url = prompt_non_empty("\nEnter YouTube URL: ")
+        if pending_url:
+            url = pending_url
+            pending_url = None
+        else:
+            url = prompt_non_empty("\nEnter YouTube URL: ")
         download_type = prompt_download_type()
         selected_format = prompt_format(download_type)
         output_dir = prompt_output_directory()
